@@ -14,7 +14,12 @@ import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.plugins.jpeg.JPEGImageWriteParam;
+import javax.imageio.stream.MemoryCacheImageOutputStream;
 import javax.servlet.ServletContext;
 
 import org.telegram.telegrambots.ApiContextInitializer;
@@ -89,10 +94,16 @@ public class HypeCycleBot extends TelegramLongPollingBot {
     		406,
     		539
     	};
-    	g.drawString(keyword, coords[section] - w / 2, 65 - h);
+    	g.drawString(keyword, coords[section] - w / 2, 70 - h);
     	g.dispose();
     	ByteArrayOutputStream bos = new ByteArrayOutputStream();
-    	ImageIO.write(img, "jpg", bos);
+    	
+    	JPEGImageWriteParam jpegParams = new JPEGImageWriteParam(null);
+    	jpegParams.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+    	jpegParams.setCompressionQuality(0.9f);
+    	final ImageWriter writer = ImageIO.getImageWritersByFormatName("jpg").next();
+    	writer.setOutput(new MemoryCacheImageOutputStream(bos));
+    	writer.write(null, new IIOImage(img, null, null), jpegParams);
     	return bos.toByteArray();
     }
     
@@ -120,7 +131,7 @@ public class HypeCycleBot extends TelegramLongPollingBot {
     	FontMetrics fm = g.getFontMetrics();
     	int w = fm.stringWidth(keyword);
     	int h = fm.getHeight();
-    	g.drawString(keyword, 320 / 2 - w / 2, 240 / 2 - h / 2);
+    	g.drawString(keyword, 320 / 2 - w / 2, 240 / 2 + h / 2);
     	g.dispose();
     	ByteArrayOutputStream bos = new ByteArrayOutputStream();
     	ImageIO.write(img, "jpg", bos);
