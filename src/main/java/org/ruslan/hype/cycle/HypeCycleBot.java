@@ -35,7 +35,15 @@ import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.exceptions.TelegramApiRequestException;
 import org.telegram.telegrambots.generics.BotSession;
 
+import com.codahale.metrics.Gauge;
+import com.codahale.metrics.Meter;
+import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.MetricRegistry.MetricSupplier;
+import com.codahale.metrics.health.HealthCheckRegistry;
+import com.codahale.metrics.servlets.HealthCheckServlet;
+import com.codahale.metrics.servlets.MetricsServlet;
 import com.google.common.base.Preconditions;
+import com.wizecore.metrics.PersistentMetricRegistry;
 
 public class HypeCycleBot extends TelegramLongPollingBot {
     private Logger log = Logger.getLogger(getClass().getName());
@@ -45,6 +53,12 @@ public class HypeCycleBot extends TelegramLongPollingBot {
 	private BotSession session;
 	private TelegramBotsApi api;
 	private boolean started;
+	private MetricRegistry metrics;
+	private Meter metricRequestInline;
+	private Meter metricRequestDirect;
+	private Meter metricError;
+	private Gauge metricFreeSpace;
+	private HealthCheckRegistry healthChecks;
 
     static {
         ApiContextInitializer.init();
@@ -55,6 +69,28 @@ public class HypeCycleBot extends TelegramLongPollingBot {
     	telegramToken = getSetup("TELEGRAM_TOKEN", telegramToken);
     	Preconditions.checkArgument(telegramBotName != null && !telegramBotName.isEmpty());
     	Preconditions.checkArgument(telegramToken != null && !telegramToken.isEmpty());
+    	
+    	String metricsType = getSetup("METRICS", "none");
+    	if (metricsType.equalsIgnoreCase("persistent")) {
+    		metrics = new PersistentMetricRegistry();
+    	}
+    	
+    	if (metricsType.equalsIgnoreCase("local") || metricsType.equalsIgnoreCase("true")) {
+    		metrics = new MetricRegistry();
+    	}
+    	
+    	if (metrics != null) {
+    		metricRequestInline = metrics.meter("request.inline");
+    		metricRequestDirect = metrics.meter("request.direct");
+    		metricError = metrics.meter("request.error");
+    		metricFreeSpace = metrics.gauge("os.freespace", new MetricSupplier<Gauge>() {
+				@Override
+				public Gauge newMetric() {
+					return new Gauge() { public Object getValue() { return File.listRoots()[0].getFreeSpace(); } };
+				}
+			});
+    		healthChecks = new HealthCheckRegistry();
+    	}
 	}
     
     public String getSetup(String key, String def) {
@@ -161,6 +197,9 @@ public class HypeCycleBot extends TelegramLongPollingBot {
 	    	InlineQuery inline = update.getInlineQuery();
     		String query = inline.getQuery();
 			log.info("Inline query: " + query);
+			if (metricRequestInline != null) {
+				metricRequestInline.mark();
+			}
     		
     		try {
     			if (query.isEmpty()) {
@@ -172,8 +211,11 @@ public class HypeCycleBot extends TelegramLongPollingBot {
 					answerInlineQuery(ans);
 	    		}
 			} catch (Exception e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
+				log.log(Level.WARNING, "Failed inline request: " + e, e);
+				if (metricError != null) {
+					metricError.mark();
+				}
 			}
     	}
 		
@@ -181,18 +223,21 @@ public class HypeCycleBot extends TelegramLongPollingBot {
 			try {
 				String s = update.getMessage().getText();
 				log.info("Direct message: " + s);
+				if (metricRequestDirect != null) {
+					metricRequestDirect.mark();
+				}
+				
 				sendPhoto(new SendPhoto().setChatId(update.getMessage().getChatId()).setNewPhoto("test", new ByteArrayInputStream(drawImage(s, 0))));
 				sendPhoto(new SendPhoto().setChatId(update.getMessage().getChatId()).setNewPhoto("test", new ByteArrayInputStream(drawImage(s, 1))));
 				sendPhoto(new SendPhoto().setChatId(update.getMessage().getChatId()).setNewPhoto("test", new ByteArrayInputStream(drawImage(s, 2))));
 				sendPhoto(new SendPhoto().setChatId(update.getMessage().getChatId()).setNewPhoto("test", new ByteArrayInputStream(drawImage(s, 3))));
 				sendPhoto(new SendPhoto().setChatId(update.getMessage().getChatId()).setNewPhoto("test", new ByteArrayInputStream(drawImage(s, 4))));
-				//sendPhoto(new SendPhoto().setChatId(update.getMessage().getChatId()).setNewPhoto("test", new ByteArrayInputStream(drawThumb(0))));
-				//sendPhoto(new SendPhoto().setChatId(update.getMessage().getChatId()).setNewPhoto("test", new ByteArrayInputStream(drawThumb(1))));
-				//sendPhoto(new SendPhoto().setChatId(update.getMessage().getChatId()).setNewPhoto("test", new ByteArrayInputStream(drawThumb(2))));
-				//sendPhoto(new SendPhoto().setChatId(update.getMessage().getChatId()).setNewPhoto("test", new ByteArrayInputStream(drawThumb(3))));
-				//sendPhoto(new SendPhoto().setChatId(update.getMessage().getChatId()).setNewPhoto("test", new ByteArrayInputStream(drawThumb(4))));
 			} catch (Exception e) {
 				e.printStackTrace();
+				log.log(Level.WARNING, "Failed direct request: " + e, e);
+				if (metricError != null) {
+					metricError.mark();
+				}
 			}
 		}
     }
@@ -221,6 +266,11 @@ public class HypeCycleBot extends TelegramLongPollingBot {
         api = new TelegramBotsApi();
         session = api.registerBot(this);
         started = true;
+        
+        if (servletContext != null && metrics != null) {
+        	servletContext.setAttribute(HealthCheckServlet.HEALTH_CHECK_REGISTRY, healthChecks);
+        	servletContext.setAttribute(MetricsServlet.METRICS_REGISTRY, metrics);
+		}
     }
     
     public void stop() {

@@ -18,6 +18,16 @@
 	</properties>
 
 	<dependencies>
+		<dependency> 
+			<groupId>com.wizecore</groupId>
+			<artifactId>persistent-metrics</artifactId>
+			<version>0.8</version>
+		</dependency>
+		<dependency>
+			<groupId>io.dropwizard.metrics</groupId>
+			<artifactId>metrics-servlets</artifactId>
+			<version>${metrics.version}</version>
+		</dependency>
 		<dependency>
 			<groupId>com.google.guava</groupId>
 			<artifactId>guava</artifactId>
@@ -83,6 +93,10 @@
 	</build>
 
 	<repositories>
+		<repository>
+			<id>jitpack.io</id>
+			<url>https://jitpack.io</url>
+		</repository>
 		<repository>
 			<id>lib</id>
 			<name>lib</name>
