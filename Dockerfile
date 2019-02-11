@@ -1,10 +1,3 @@
-FROM maven:alpine
-
-RUN apk --update add git && \
-	git clone https://github.com/huksley/HypeCycleBot && \
-	cd HypeCycleBot && \
-	mvn clean package
-
 FROM tomcat:8.5
 
 # Create user
@@ -30,7 +23,7 @@ RUN chmod a+rX -R /usr/local/tomcat && \
 	chmod a+x /usr/local/tomcat/bin/catalina.sh
 
 # Copy bot
-COPY --from=0 /HypeCycleBot/target/HypeCycleBot /usr/local/tomcat/webapps/HypeCycleBot
+COPY ./target/HypeCycleBot /usr/local/tomcat/webapps/HypeCycleBot
 
 # Create folder for images
 RUN chown tomcat.tomcat /usr/local/tomcat -R && \
